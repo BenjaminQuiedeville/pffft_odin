@@ -1,0 +1,8 @@
+*.raddbgi
+*.rdi
+*.exe
+*.pdb
+*.focus-config
+
+.vscode
+.vs
