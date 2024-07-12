@@ -1,79 +1,67 @@
 package main
 
 import "core:fmt"
-import "core:c"
-foreign import pffft "pffft/pffft.lib"
-
-
-PFFFT_Setup :: struct {}
-
-pffft_direction :: enum c.int {
-    forward = 0, 
-    backward,
-}
-
-pffft_transform_type :: enum c.int {
-    real = 0,
-    complex,
-}
- 
-
-@(default_calling_convention="c")
-foreign pffft {
-    
-    pffft_new_setup :: proc(N : c.int, transform : pffft_transform_type) -> ^PFFFT_Setup ---
-    pffft_destroy_setup :: proc(setup : ^PFFFT_Setup) ---
-
-    pffft_transform :: proc(setup : ^PFFFT_Setup, 
-                            input : ^f32, 
-                            output : ^f32, 
-                            work : ^f32, 
-                            direction : pffft_direction) ---
-
-    pffft_transform_ordered :: proc(setup : ^PFFFT_Setup, 
-                                    input : ^f32, 
-                                    output : ^f32, 
-                                    work : ^f32, 
-                                    direction : pffft_direction) ---
-
-    pffft_zreorder :: proc(setup : ^PFFFT_Setup, 
-                           input : ^f32, 
-                           output : ^f32, 
-                           direction : pffft_direction) ---
-
-    pffft_zconvolve_accumulate ::proc(setup : ^PFFFT_Setup, 
-                                      dft_a : ^f32,
-                                      dft_b : ^f32,
-                                      dft_ab : ^f32,
-                                      scaling : f32) ---
-
-    pffft_aligned_malloc :: proc(nb_bytes : u64) -> rawptr ---
-    pffft_aligned_free :: proc(ptr : rawptr) ---
-    
-    pffft_simd_size :: proc() -> c.int ---
-}
+import "core:math"
+import "core:math/cmplx"
+import ma "vendor:miniaudio"
+import "pffft"
 
 
 
 main :: proc() {
     
-    fftSize : u64 : 64
+    result : ma.result
+    filepath : cstring = "pffft_test.wav"
+    encoder : ma.encoder
+    device_config : ma.device_config
+    device : ma.device
+    encoder_config : ma.encoder_config
     
-    signal := transmute(^f32)pffft_aligned_malloc(fftSize * size_of(f32))
-    output := transmute(^f32)pffft_aligned_malloc(fftSize * size_of(f32))
-    fmt.println("buffer properly allocated")
+    encoder_config = ma.encoder_config_init(ma.encoding_format.wav, ma.format.f32, 1, 44100);
+    
+
+    result = ma.encoder_init_file(filepath, &encoder_config, &encoder)  
+    if result != ma.result.SUCCESS {
+        fmt.println("Failed to initialize output file.\n")
+    }
+    
+    fftSize :: 1024
+    
+    signal   := transmute([^]f32)pffft.aligned_malloc(fftSize * size_of(f32))
+    spectrum := transmute([^]f32)pffft.aligned_malloc(fftSize * size_of(f32))
 
     for i in 0..<fftSize {
+        signal[i] = 0.0
+    }    
+
+    signal[0] = 1
+    signal[1] = 1 
+    signal[2] = 1  
+    
+    setup := pffft.new_setup(fftSize, pffft.TransformType.real)
+
+    pffft.transform_ordered(setup, signal, spectrum, nil, pffft.Direction.forward) 
+    pffft.transform_ordered(setup, spectrum, signal, nil, pffft.Direction.backward)
+    pffft.destroy_setup(setup)
+
+    spectrum_complex := pffft.to_complex(spectrum, fftSize)
+    spectrum_abs := make([]f32, len(spectrum_complex))
+    
+    for &elem, index in spectrum_abs {
+        elem = cmplx.abs(spectrum_complex[index])
+    }
+    
+    for i in 0..<fftSize {
         
-        signal^[i] = 0
-        output^[i] = 0
+        signal[i] /= f32(fftSize)
+        fmt.print(signal[i], " ")
     }
 
+    result = ma.encoder_write_pcm_frames(&encoder, raw_data(spectrum_abs), fftSize/2, nil)
 
-    setup := pffft_new_setup(64, pffft_transform_type.real)
-
-    pffft_transform(setup, transmute(^f32)signal, transmute(^f32)output, transmute(^f32)c.NULL, pffft_direction.forward) 
-
-    pffft_destroy_setup(setup)
+    ma.encoder_uninit(&encoder)
+    
+    delete(spectrum_complex)
+    delete(spectrum_abs)
 
 }
