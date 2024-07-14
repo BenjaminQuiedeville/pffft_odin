@@ -1,7 +1,7 @@
 package pffft
 
 import "core:c"
-foreign import "pffft.lib"
+foreign import "pffft/pffft.lib"
 
 
 Setup :: struct {}
@@ -55,7 +55,7 @@ to_complex :: proc(source : [^]f32, size : int) -> []complex64 {
     result := make([]complex64, int(size/2))
     
     for &element, index in result {
-        element = source[index] + source[index+size/2]
+        element = complex(source[index], source[index+size/2])
     }
     return result
 }
