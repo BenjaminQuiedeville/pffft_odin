@@ -64,7 +64,6 @@ to_complex :: proc(source : [^]f32, size : int) -> []complex64 {
 // allocate slices alogned to 64 bytes boundary
 alignment :: 64
  
-make_slice :: proc(#any_int size: int, allocator := context.allocator, loc := #caller_location) -> []f32 {
-    slice, err := runtime.make_aligned([]f32, size, alignment, allocator, loc)
-    return slice
+make_slice :: proc(#any_int size: int, allocator := context.allocator, loc := #caller_location) -> ([]f32, runtime.Allocator_Error) #optional_allocator_error {
+    return runtime.make_aligned([]f32, size, alignment, allocator, loc)
 }
